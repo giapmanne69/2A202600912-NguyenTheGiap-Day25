@@ -251,8 +251,15 @@ Sinh viên chọn **ít nhất 2** trong 5 extensions. Mỗi extension tối đa
 
 Dùng để phân biệt sinh viên hiểu bản chất vs. chỉ chạy script:
 
-1. "GPU-Util 98% có nghĩa là GPU đang làm việc hiệu quả không? Tại sao?"
-2. "Tại sao cần ≥ 80% tag coverage mới dám chargeback?"
-3. "Nếu công ty bạn có 70% workload interruptible, bạn sẽ tối ưu purchasing như thế nào?"
-4. "Đo bằng $/GPU-hr vs $/1M-token — khi nào con số này cho kết quả trái ngược nhau?"
-5. "Tại sao LLM decode là memory-bound còn prefill là compute-bound?"
+1. **"GPU-Util 98% có nghĩa là GPU đang làm việc hiệu quả không? Tại sao?"**
+   - **Không.** GPU-Util chỉ đo xem các clock của GPU có đang hoạt động hay không. Nếu GPU bị nghẽn cổ chai bộ nhớ (Memory-bandwidth bound) hoặc nghẽn I/O, GPU-Util vẫn báo 98% nhưng Tensor Cores (nhân tính toán LLM) hoàn toàn không chạy, dẫn đến hiệu suất tính toán thực tế (MFU) cực kỳ thấp (~20%).
+2. **"Tại sao cần ≥ 80% tag coverage mới dám chargeback?"**
+   - Để đảm bảo tính công bằng và chính xác khi trừ tiền trực tiếp vào ngân sách của các team. Nếu tag coverage thấp, một lượng lớn chi phí "vô chủ" (untagged) sẽ bị phân bổ không chính xác, gây tranh chấp giữa các phòng ban.
+3. **"Nếu công ty bạn có 70% workload interruptible, bạn sẽ tối ưu purchasing như thế nào?"**
+   - Áp dụng chiến lược **Spot-First**. Thuê khoảng 60% Spot Instance cho các job training/batch và thiết lập hệ thống checkpoint tự động (ví dụ mỗi 30 phút). Các job spiky hoặc ngắn hạn còn lại sẽ chạy On-demand để tối ưu chi phí và độ ổn định.
+4. **"Đo bằng $/GPU-hr vs $/1M-token — khi nào con số này cho kết quả trái ngược nhau?"**
+   - Khi nâng cấp lên GPU thế hệ mới hơn (như A10G lên H100). Chi phí theo giờ (`$/GPU-hr`) tăng gấp nhiều lần, nhưng vì GPU mới xử lý nhanh hơn vượt trội, chi phí trên một triệu token (`$/1M-token`) thực tế lại rẻ hơn đáng kể.
+5. **"Tại sao LLM decode là memory-bound còn prefill là compute-bound?"**
+   - **Prefill (Input):** Xử lý song song tất cả các token đầu vào cùng lúc, tính toán ma trận khổng lồ $\rightarrow$ **Compute-bound**.
+   - **Decode (Output):** Sinh token tuần tự từng cái một, bắt buộc phải tải lại toàn bộ weights của mô hình và KV Cache từ bộ nhớ HBM lên registers cho mỗi token mới $\rightarrow$ **Memory-bandwidth bound**.
+

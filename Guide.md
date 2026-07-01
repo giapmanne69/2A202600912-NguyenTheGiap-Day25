@@ -187,11 +187,14 @@ Idle waste (1 day): $125.00  ->  $3,750/month
 
 ### Bước 4.3 — Phân tích kết quả
 
-Trả lời các câu hỏi sau (để hiểu sâu):
+**Trả lời các câu hỏi sau (để hiểu sâu):**
 
-1. GPU nào có `GPU-Util` cao nhất? MFU của nó là bao nhiêu?
-2. Tại sao `GPU-Util 98%` có thể đi kèm với `MFU 20%`? (Gợi ý: GPU "bận" nhưng làm gì? Memory stall? I/O wait?)
-3. Lãng phí idle tính ra bao nhiêu `/tháng`? Chiếm bao nhiêu % tổng chi phí?
+1. **GPU nào có `GPU-Util` cao nhất? MFU của nó là bao nhiêu?**
+   - GPU có `GPU-Util` cao nhất là `gpu-h100-4` với mức sử dụng báo cáo là **98.2%**. Tuy nhiên, hiệu quả tính toán thực tế (**MFU**) của nó chỉ đạt **19.4%**.
+2. **Tại sao `GPU-Util 98%` có thể đi kèm với `MFU 20%`?**
+   - Công cụ `nvidia-smi` chỉ đo thời gian clock bận nhưng không đo mức độ tính toán thực tế của Tensor Cores. Tác vụ LLM decode bị nghẽn cổ chai bộ nhớ (**Memory Stall** hoặc **I/O Wait**), khiến GPU phải liên tục đợi load dữ liệu từ bộ nhớ HBM thay vì thực hiện tính toán.
+3. **Lãng phí idle tính ra bao nhiêu `/tháng`? Chiếm bao nhiêu % tổng chi phí?**
+   - Lãng phí idle đạt **$20/ngày**, tương đương **$600/tháng** (~3.9% tổng chi phí).
 
 ### Bước 4.4 — Hiểu roofline model (tùy chọn nhưng nên đọc)
 
@@ -262,9 +265,12 @@ print(f"Effective fraction: {discount_stack(batch=True, cache_hit_frac=0.8):.3f}
 
 ### Bước 5.4 — Phân tích kết quả
 
-1. Trong 3 đòn bẩy (cascade, cache, batch), đòn bẩy nào đóng góp savings lớn nhất?
-2. Tại sao `discount_stack(batch=True, cache_hit_frac=1.0) = 0.05`? (Gợi ý: 50% × 10% = ?)
-3. Khi nào **không nên** dùng batch API? (Gợi ý: nghĩ về latency)
+1. **Trong 3 đòn bẩy (cascade, cache, batch), đòn bẩy nào đóng góp savings lớn nhất?**
+   - **Cascade routing** (định tuyến request) đóng góp lớn nhất nhờ chuyển 80% truy vấn đơn giản sang mô hình `small` giá rẻ hơn 15 lần.
+2. **Tại sao `discount_stack(batch=True, cache_hit_frac=1.0) = 0.05`?**
+   - Các chiết khấu nhân dồn với nhau: $0.10 \text{ (cache discount)} \times 0.50 \text{ (batch discount)} = 0.05$ (tức là chỉ phải trả 5% giá gốc).
+3. **Khi nào không nên dùng batch API?**
+   - Không nên dùng cho ứng dụng real-time/interactive (như chatbot trực tuyến) yêu cầu phản hồi tức thì dưới vài giây, vì Batch API có độ trễ lớn (lên tới 24 giờ).
 
 ---
 
@@ -323,9 +329,12 @@ print(result)
 
 ### Bước 6.4 — Phân tích kết quả
 
-1. Job nào được đề xuất dùng spot? Tại sao?
-2. Với spot, "effective hours" cao hơn "job hours" thực tế — điều này nghĩa là gì?
-3. Job nào được đề xuất reserved nhưng bạn nghĩ on-demand phù hợp hơn (hoặc ngược lại)? Tại sao?
+1. **Job nào được đề xuất dùng spot? Tại sao?**
+   - Các job training offline (`job-train-llm`, `job-train-embed`, `job-finetune`) vì chúng có thể ngắt quãng (`interruptible = 1`) và áp dụng checkpointing.
+2. **Với spot, "effective hours" cao hơn "job hours" thực tế — điều này nghĩa là gì?**
+   - Do cộng thêm thời gian chạy lại phần việc bị mất do thu hồi tài nguyên (rework) và thời gian overhead lưu checkpoint định kỳ.
+3. **Job nào được đề xuất reserved nhưng bạn nghĩ on-demand phù hợp hơn (hoặc ngược lại)? Tại sao?**
+   - Các job chạy spiky hoặc chạy ngắn hạn (< 90 ngày) dù có duty cycle cao $\ge 55\%$ thì On-demand vẫn phù hợp hơn Reserved để tránh cam kết dài hạn vô ích.
 
 ---
 
@@ -375,9 +384,12 @@ head -5 outputs/focus_export.csv
 
 ### Bước 7.4 — Phân tích kết quả
 
-1. Team nào tốn nhiều nhất? Tỷ lệ so với tổng là bao nhiêu?
-2. Tag coverage là bao nhiêu %? Có đủ để chargeback không?
-3. Tại sao FOCUS lại quan trọng khi công ty dùng nhiều cloud provider?
+1. **Team nào tốn nhiều nhất? Tỷ lệ so với tổng là bao nhiêu?**
+   - Team **assistant** tiêu tốn nhiều nhất với **$2.59/ngày** (~30.5% tổng chi phí).
+2. **Tag coverage là bao nhiêu %? Có đủ để chargeback không?**
+   - Tag coverage đạt **92%**, hoàn toàn đủ điều kiện thực hiện chargeback ($\ge 80\%$).
+3. **Tại sao FOCUS lại quan trọng khi công ty dùng nhiều cloud provider?**
+   - FOCUS cung cấp một chuẩn chung cho dữ liệu hóa đơn cloud, giúp gộp dữ liệu từ nhiều nhà cung cấp đám mây dễ dàng mà không cần xây dựng parser riêng cho từng loại.
 
 ---
 
