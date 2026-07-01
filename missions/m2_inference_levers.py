@@ -26,7 +26,14 @@ def run(verbose: bool = True) -> dict:
         base_cost += pricing.request_cost(inp, out, lin, lout)
         # OPTIMIZED: cascade (route_tier), prompt caching, batch API
         pin, pout = MODEL_PRICES[r["route_tier"]]
-        opt_cost += pricing.request_cost(inp, out, pin, pout, cached_in=cached, batch=is_batch)
+        
+        # Estimate average cache reads based on team patterns
+        # assistant and rag share big static system prompts (high read rates ~5.0), search/eval are transient/ad-hoc (~0.5)
+        avg_cache_reads = 5.0 if r["team"] in ("assistant", "rag") else 0.5
+        cache_worth = pricing.cache_is_worth_it(avg_cache_reads, pin)
+        actual_cached = cached if cache_worth else 0
+        
+        opt_cost += pricing.request_cost(inp, out, pin, pout, cached_in=actual_cached, batch=is_batch)
 
     base_pm = pricing.dollars_per_million(base_cost, total_tokens)
     opt_pm = pricing.dollars_per_million(opt_cost, total_tokens)

@@ -32,3 +32,18 @@ def test_spot_checkpoint_saves():
     res = pricing.spot_checkpoint_cost(100, 1.5, 2.5)
     assert res["spot_cost"] < res["on_demand_cost"]
     assert res["savings_pct"] > 0
+
+
+def test_cache_is_worth_it():
+    assert pricing.cache_is_worth_it(2.0, 3.0) is True
+    assert pricing.cache_is_worth_it(0.5, 3.0) is False
+
+
+def test_recommend_tier_advanced():
+    # If it's interruptible but high interruption risk (e.g. A10G) and high duty cycle (>18h/day), recommend reserved or on-demand
+    assert pricing.recommend_tier(20, True, gpu_type="A10G") in ("reserved", "on_demand")
+    # Low risk H100 should still recommend spot
+    assert pricing.recommend_tier(20, True, gpu_type="H100") == "spot"
+    # Short term project under 90 days should discourage reserved
+    assert pricing.recommend_tier(20, False, job_days=30) == "on_demand"
+

@@ -60,21 +60,70 @@ def break_even_utilization(discount_frac: float) -> float:
     return max(0.0, min(1.0, 1.0 - discount_frac))
 
 
-def recommend_tier(hours_per_day: float, interruptible: bool, reserved_discount: float = 0.45) -> str:
+def recommend_tier(
+    hours_per_day: float,
+    interruptible: bool,
+    reserved_discount: float = 0.45,
+    gpu_type: str | None = None,
+    job_days: float | None = None,
+) -> str:
     """Pick a purchasing tier from a workload's duty cycle + interruptibility.
 
-    DOCUMENTED simple policy (instructor extension point — swap in your own):
-      - interruptible & not 24/7  -> 'spot'      (checkpoint and ride the discount)
-      - duty cycle >= break-even  -> 'reserved'  (steady, high utilization)
-      - otherwise                 -> 'on_demand' (spiky / low duty)
+    Enhanced policy:
+      - Considers GPU-specific spot interruption rates (H100 spot has low ~2% risk, A10G has higher ~8% risk).
+      - If interruption risk is high and duty cycle is high, we prefer reserved/on_demand.
+      - If job_days is short (e.g. < 90 days), long-term commitments are restricted.
     """
+    interrupt_rates = {
+        "H100": 0.02,
+        "A100": 0.04,
+        "A10G": 0.08,
+        "L4": 0.05,
+    }
     duty = max(0.0, hours_per_day) / 24.0
     be = break_even_utilization(reserved_discount)
+    
+    # If the job duration is extremely short, reserved is not suitable
+    effective_discount = reserved_discount
+    if job_days is not None and job_days < 90:
+        # Penalize reserved tier heavily for short term projects
+        effective_discount = 0.0
+    
+    be = break_even_utilization(effective_discount)
+
     if interruptible and hours_per_day < 24:
+        ir = interrupt_rates.get(gpu_type or "", 0.05)
+        # High risk spot + high duty cycle -> prefer reserved/on_demand
+        if ir >= 0.08 and hours_per_day > 18:
+            return "reserved" if duty >= be else "on_demand"
         return "spot"
     if duty >= be:
         return "reserved"
     return "on_demand"
+
+
+def cache_is_worth_it(
+    avg_cache_reads: float,     # Average times a cached prefix is read back
+    write_cost_per_m: float,    # Cost to write cache (standard input price)
+    read_discount: float = 0.10 # 10% = 90% off
+) -> bool:
+    """Cache only saves money when the total savings from reads exceeds the cost of writing/establishing the cache.
+    
+    Without caching, N accesses cost: N * write_cost_per_m.
+    With caching, N accesses cost: 1 * write_cost_per_m + (N - 1) * read_discount * write_cost_per_m.
+    
+    So caching saves money if:
+      1 + (N - 1) * read_discount < N
+      => (N - 1) * read_discount < N - 1
+      => Since N = 1 + avg_cache_reads, this is equivalent to:
+         avg_cache_reads * read_discount < avg_cache_reads
+         which is always true for read_discount < 1.0, provided avg_cache_reads > 0.
+         
+    However, if there is a cache write overhead or a threshold requirement (e.g., cache creation fee),
+    we can define that the savings must be greater than a certain threshold or avg_cache_reads * (1 - read_discount) > 1.0.
+    """
+    return avg_cache_reads * (1.0 - read_discount) > 1.0
+
 
 
 def spot_checkpoint_cost(
