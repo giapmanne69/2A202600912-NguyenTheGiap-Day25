@@ -566,12 +566,12 @@ from finops.sustainability import REGION_CARBON, carbon_g, wh_per_query
 ### Checklist trước khi nộp
 
 ```
-[ ] python verify.py  →  11/11 checks passed
-[ ] pytest -q         →  15 passed
-[ ] outputs/report.md tồn tại và có đủ các section
-[ ] outputs/savings.png tồn tại (nếu matplotlib hoạt động)
-[ ] outputs/focus_export.csv tồn tại
-[ ] Đã thực hiện ≥2 extension với kết quả đo lường
+[x] python verify.py  →  11/11 checks passed
+[x] pytest -q         →  15 passed
+[x] outputs/report.md tồn tại và có đủ các section
+[x] outputs/savings.png tồn tại (nếu matplotlib hoạt động)
+[x] outputs/focus_export.csv tồn tại
+[x] Đã thực hiện ≥2 extension với kết quả đo lường
 ```
 
 ### Bài viết ngắn đi kèm (write-up)
